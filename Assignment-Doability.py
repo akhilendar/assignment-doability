@@ -17,22 +17,20 @@ def download_curriculum():
         "data_analytics": "https://drive.google.com/uc?id=1YCdnPkIZzXufN3qF9KQQTL5lbD6wxdVG",
         "java_fullstack": "https://drive.google.com/uc?id=1xv6LplsAOAfJ_824LVepIfIPMbZmk249",
         "qa_testing": "https://drive.google.com/uc?id=18-PWgg4tMlnU6o6dOMmb5nL2n48cC6mr",
+        "advanced_concepts": "https://drive.google.com/uc?id=1JZoxrAV1Hzlv2BdYWswPkXnrkxnRubkZ"
     }
 
     curriculum_files = {}
     for name, url in drive_links.items():
         output = os.path.join(curriculum_dir, f"{name}.pdf")
-        if not os.path.exists(output) or os.path.getsize(output) == 0:
-            if os.path.exists(output):
-                os.remove(output)
+        if not os.path.exists(output):
             gdown.download(url, output, quiet=False)
         try:
             with open(output, "rb") as f:
                 PdfReader(f)
             curriculum_files[name] = output
         except Exception as e:
-            st.error(
-                f"Failed to download or verify the file: {output}. Error: {e}")
+            st.error(f"Failed to download or verify the file: {output}. Error: {e}")
             return None
     return curriculum_files
 
@@ -40,8 +38,7 @@ def download_curriculum():
 def extract_text_from_pdf(file_path):
     try:
         reader = PdfReader(file_path)
-        text = " ".join(page.extract_text()
-                        for page in reader.pages if page.extract_text())
+        text = " ".join(page.extract_text() for page in reader.pages if page.extract_text())
         return normalize_text(text)
     except Exception as e:
         st.error(f"Error reading PDF file {file_path}: {e}")
@@ -69,43 +66,54 @@ def extract_text_from_image(file_path):
 
 
 def normalize_text(text):
-    # Lowercase, remove non-alphanumeric characters
     return re.sub(r'\W+', ' ', text.lower())
 
 
-def calculate_doability(content, curriculum):
-    content_words = content.split()
+def calculate_doability(content, curriculum, additional_context=""):
+    # Combine the main content with additional context
+    full_content = content + " " + additional_context
+    content_words = full_content.split()
     curriculum_words = set(curriculum.split())
     match_count = sum(1 for word in content_words if word in curriculum_words)
     return (match_count / len(content_words)) * 100 if content_words else 0
+
+
+def display_doability(doability):
+    color = "red" if doability < 40 else "orange" if doability < 70 else "green"
+    html = f"<div style='text-align: center; color: {color}; font-size: 26px; font-weight: bold;'>{doability:.2f}% Doable</div>"
+    st.markdown(html, unsafe_allow_html=True)
 
 
 def main():
     st.title("Assignment Do-ability Checker")
     curriculum_files = download_curriculum()
     if not curriculum_files:
-        st.error("Failed to load curriculum files.")
         return
 
-    uploaded_file = st.file_uploader("Please upload your assignment document", type=[
-                                     "pdf", "docx", "doc", "png", "jpg", "jpeg"])
-    if uploaded_file:
-        file_type = uploaded_file.type
-        content = ""
-        if file_type == "application/pdf":
-            content = extract_text_from_pdf(uploaded_file)
-        elif file_type in ["application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/msword"]:
-            content = extract_text_from_doc(uploaded_file)
-        elif file_type in ["image/png", "image/jpeg"]:
-            content = extract_text_from_image(uploaded_file)
-        else:
-            st.error("Unsupported file type.")
-            return
+    uploaded_file = st.file_uploader("Please upload your assignment document", type=["pdf", "docx", "doc", "png", "jpg", "jpeg"])
+    
+    # Additional input for context
+    additional_context = st.text_input("Optional: Provide additional context (e.g., 'can do with SQLite'):") 
 
-        curriculum = " ".join(extract_text_from_pdf(f)
-                              for f in curriculum_files.values())
-        doability = calculate_doability(content, curriculum)
-        st.write(f"{doability:.2f}% Doable")
+    # Button to check doability
+    if st.button("Check"):
+        if uploaded_file:
+            content = ""
+            if uploaded_file.type == "application/pdf":
+                content = extract_text_from_pdf(uploaded_file)
+            elif uploaded_file.type in ["application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/msword"]:
+                content = extract_text_from_doc(uploaded_file)
+            elif uploaded_file.type in ["image/png", "image/jpeg"]:
+                content = extract_text_from_image(uploaded_file)
+            else:
+                st.error("Unsupported file type.")
+                return
+
+            curriculum = " ".join(extract_text_from_pdf(f) for f in curriculum_files.values())
+            doability = calculate_doability(content, curriculum, additional_context)
+            display_doability(doability)
+        else:
+            st.error("Please upload an assignment document to check.")
 
 
 if __name__ == "__main__":
